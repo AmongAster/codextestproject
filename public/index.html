@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LedgerPro Market</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="amazon-bg">
+    <header class="amazon-header">
+      <div class="brand">LedgerPro <span>Market</span></div>
+      <input id="search-input" class="search" placeholder="Поиск товаров" />
+      <nav class="header-actions">
+        <a href="/admin.html">Админ панель</a>
+        <button id="cart-open-btn" class="cart-btn">Корзина (<span id="cart-count">0</span>)</button>
+      </nav>
+    </header>
+
+    <main class="store-layout">
+      <section class="auth-card" id="auth-card">
+        <h2>Вход / Регистрация</h2>
+        <div class="auth-grid">
+          <form id="register-form">
+            <h3>Регистрация</h3>
+            <input name="name" placeholder="Имя" required />
+            <input name="email" type="email" placeholder="Email" required />
+            <input name="password" type="password" placeholder="Пароль" required />
+            <button type="submit">Создать аккаунт</button>
+          </form>
+          <form id="login-form">
+            <h3>Вход</h3>
+            <input name="email" type="email" placeholder="Email" required />
+            <input name="password" type="password" placeholder="Пароль" required />
+            <button type="submit">Войти</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="account-card hidden" id="account-card">
+        <h2>Личный кабинет</h2>
+        <p id="me-line"></p>
+        <button id="logout-btn" class="secondary">Выйти</button>
+        <h3>Мои заказы</h3>
+        <ul id="my-orders" class="list"></ul>
+      </section>
+
+      <section>
+        <div id="products-grid" class="products-grid"></div>
+      </section>
+
+      <aside id="cart-panel" class="cart-panel hidden">
+        <h3>Корзина</h3>
+        <ul id="cart-list" class="list"></ul>
+        <p><strong>Итого:</strong> <span id="cart-total">$0.00</span></p>
+        <button id="checkout-btn">Перейти к оплате</button>
+      </aside>
+
+      <p id="message" class="message"></p>
+    </main>
+
+    <script src="/store.js"></script>
+  </body>
+</html>
