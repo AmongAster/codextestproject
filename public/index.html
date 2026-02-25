@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LedgerPro Accounting</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>LedgerPro Accounting Dashboard</h1>
+      <p>Manage clients, invoices, expenses, and financial performance.</p>
+    </header>
+
+    <main>
+      <section class="card" id="auth-card">
+        <h2>Authentication</h2>
+        <div class="grid-two">
+          <form id="register-form">
+            <h3>Create account</h3>
+            <input name="name" placeholder="Name" required />
+            <input name="email" type="email" placeholder="Email" required />
+            <input name="password" type="password" placeholder="Password" required />
+            <button type="submit">Register</button>
+          </form>
+
+          <form id="login-form">
+            <h3>Sign in</h3>
+            <input name="email" type="email" placeholder="Email" required />
+            <input name="password" type="password" placeholder="Password" required />
+            <button type="submit">Login</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="card hidden" id="dashboard">
+        <h2>Finance Overview</h2>
+        <div id="summary" class="kpi-grid"></div>
+
+        <div class="grid-three">
+          <form id="client-form">
+            <h3>Add Client</h3>
+            <input name="name" placeholder="Client name" required />
+            <input name="email" type="email" placeholder="Client email" required />
+            <button>Add Client</button>
+          </form>
+
+          <form id="invoice-form">
+            <h3>Add Invoice</h3>
+            <input name="clientName" placeholder="Client name" required />
+            <input name="amount" type="number" step="0.01" placeholder="Amount" required />
+            <select name="status">
+              <option value="pending">Pending</option>
+              <option value="paid">Paid</option>
+            </select>
+            <button>Add Invoice</button>
+          </form>
+
+          <form id="expense-form">
+            <h3>Add Expense</h3>
+            <input name="category" placeholder="Category" required />
+            <input name="amount" type="number" step="0.01" placeholder="Amount" required />
+            <button>Add Expense</button>
+          </form>
+        </div>
+
+        <div class="grid-two">
+          <section>
+            <h3>Clients</h3>
+            <ul id="client-list"></ul>
+          </section>
+          <section>
+            <h3>Invoices</h3>
+            <ul id="invoice-list"></ul>
+          </section>
+        </div>
+
+        <section>
+          <h3>Expenses</h3>
+          <ul id="expense-list"></ul>
+        </section>
+      </section>
+
+      <p id="message"></p>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

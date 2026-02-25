@@ -1,0 +1,14 @@
+{
+  "name": "codextestproject",
+  "version": "1.0.0",
+  "description": "Full-stack accounting web app with REST API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
