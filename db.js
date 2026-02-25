@@ -25,7 +25,7 @@ const config = {
   port: process.env.DB_PORT || '3306',
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'accounting_app'
+  database: process.env.DB_NAME || 'accounting_shop'
 };
 
 function escapeSql(value) {
@@ -67,7 +67,7 @@ function query(sql) {
   const output = runSql(sql).trim();
   if (!output) return [];
   const lines = output.split(/\r?\n/);
-  if (lines.length === 1) return [];
+  if (lines.length <= 1) return [];
   const headers = lines[0].split('\t');
   return lines.slice(1).map((line) => {
     const values = line.split('\t');
@@ -90,6 +90,7 @@ function initDatabase() {
       name VARCHAR(255) NOT NULL,
       email VARCHAR(255) NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
+      role ENUM('admin', 'customer') NOT NULL DEFAULT 'customer',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -119,6 +120,31 @@ function initDatabase() {
       amount DECIMAL(12, 2) NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_expenses_user (user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS products (
+      id VARCHAR(64) PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      description TEXT,
+      category VARCHAR(128) NOT NULL,
+      price DECIMAL(12, 2) NOT NULL,
+      stock INT NOT NULL DEFAULT 0,
+      image_url TEXT,
+      is_active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS orders (
+      id VARCHAR(64) PRIMARY KEY,
+      user_id VARCHAR(64) NOT NULL,
+      product_id VARCHAR(64) NOT NULL,
+      quantity INT NOT NULL,
+      total_amount DECIMAL(12, 2) NOT NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'new',
+      shipping_address TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_orders_user (user_id),
+      INDEX idx_orders_product (product_id)
     );
   `);
 }

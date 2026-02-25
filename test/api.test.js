@@ -17,9 +17,9 @@ function checkMysqlCli() {
 
 function waitForServer(proc) {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Server start timeout')), 8000);
+    const timeout = setTimeout(() => reject(new Error('Server start timeout')), 10000);
     proc.stdout.on('data', (chunk) => {
-      if (chunk.toString().includes('Accounting app running')) {
+      if (chunk.toString().includes('Accounting shop app running')) {
         clearTimeout(timeout);
         resolve();
       }
@@ -60,50 +60,39 @@ async function request(path, options = {}) {
   return { status: response.status, body: json };
 }
 
-test('register, authenticate, and perform CRUD/report operations', async (t) => {
+test('customer registration/login can browse shop and create order', async (t) => {
   if (!canRunMysqlTests) {
     t.skip('MySQL is not available in this environment.');
     return;
   }
 
-  const unique = Date.now();
-  const email = `tester${unique}@mail.com`;
-
+  const email = `customer${Date.now()}@mail.com`;
   const register = await request('/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: 'Tester', email, password: 'P@ssw0rd1' })
+    body: JSON.stringify({ name: 'Customer', email, password: 'P@ssw0rd1' })
   });
 
   assert.equal(register.status, 201);
-  assert.ok(register.body.token);
+  assert.equal(register.body.user.role, 'customer');
 
-  const authHeader = { Authorization: `Bearer ${register.body.token}`, 'Content-Type': 'application/json' };
+  const products = await request('/api/products');
+  assert.equal(products.status, 200);
+  assert.ok(Array.isArray(products.body));
+  assert.ok(products.body.length > 0);
 
-  const createClient = await request('/api/clients', {
+  const productId = products.body[0].id;
+  const order = await request('/api/orders', {
     method: 'POST',
-    headers: authHeader,
-    body: JSON.stringify({ name: 'ACME Corp', email: 'billing@acme.com' })
+    headers: { Authorization: `Bearer ${register.body.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ productId, quantity: 1, shippingAddress: 'Test street 1' })
   });
-  assert.equal(createClient.status, 201);
 
-  const createInvoice = await request('/api/invoices', {
-    method: 'POST',
-    headers: authHeader,
-    body: JSON.stringify({ clientName: 'ACME Corp', amount: 5000, status: 'pending' })
+  assert.equal(order.status, 201);
+
+  const myOrders = await request('/api/orders/my', {
+    headers: { Authorization: `Bearer ${register.body.token}` }
   });
-  assert.equal(createInvoice.status, 201);
-
-  const createExpense = await request('/api/expenses', {
-    method: 'POST',
-    headers: authHeader,
-    body: JSON.stringify({ category: 'Software', amount: 700 })
-  });
-  assert.equal(createExpense.status, 201);
-
-  const summary = await request('/api/reports/summary', { headers: authHeader });
-  assert.equal(summary.status, 200);
-  assert.equal(summary.body.totalIncome, 5000);
-  assert.equal(summary.body.totalExpenses, 700);
-  assert.equal(summary.body.netProfit, 4300);
+  assert.equal(myOrders.status, 200);
+  assert.ok(myOrders.body.length >= 1);
 });

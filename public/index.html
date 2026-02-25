@@ -1,87 +1,123 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LedgerPro Accounting</title>
+    <title>LedgerPro Commerce</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <header>
-      <h1>LedgerPro Accounting Dashboard</h1>
-      <p>Manage clients, invoices, expenses, and financial performance.</p>
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+
+    <header class="topbar glass">
+      <div>
+        <h1>LedgerPro Commerce</h1>
+        <p>Магазин для клиентов + админ-панель для финансов и документов</p>
+      </div>
+      <div id="auth-state" class="auth-state"></div>
     </header>
 
-    <main>
-      <section class="card" id="auth-card">
-        <h2>Authentication</h2>
-        <div class="grid-two">
+    <main class="layout">
+      <section class="panel glass" id="auth-panel">
+        <h2>Вход / Регистрация</h2>
+        <div class="auth-grid">
           <form id="register-form">
-            <h3>Create account</h3>
-            <input name="name" placeholder="Name" required />
+            <h3>Регистрация клиента</h3>
+            <input name="name" placeholder="Имя" required />
             <input name="email" type="email" placeholder="Email" required />
-            <input name="password" type="password" placeholder="Password" required />
-            <button type="submit">Register</button>
+            <input name="password" type="password" placeholder="Пароль" required />
+            <button type="submit">Создать аккаунт</button>
           </form>
 
           <form id="login-form">
-            <h3>Sign in</h3>
+            <h3>Вход</h3>
             <input name="email" type="email" placeholder="Email" required />
-            <input name="password" type="password" placeholder="Password" required />
-            <button type="submit">Login</button>
+            <input name="password" type="password" placeholder="Пароль" required />
+            <button type="submit">Войти</button>
+            <small>Для админа: admin@ledgerpro.shop / Admin123!</small>
           </form>
         </div>
       </section>
 
-      <section class="card hidden" id="dashboard">
-        <h2>Finance Overview</h2>
-        <div id="summary" class="kpi-grid"></div>
+      <section class="panel glass" id="shop-panel">
+        <div class="section-head">
+          <h2>Магазин</h2>
+          <button id="refresh-shop" class="secondary">Обновить</button>
+        </div>
+        <div id="products-grid" class="products-grid"></div>
+      </section>
 
-        <div class="grid-three">
-          <form id="client-form">
-            <h3>Add Client</h3>
-            <input name="name" placeholder="Client name" required />
-            <input name="email" type="email" placeholder="Client email" required />
-            <button>Add Client</button>
+      <section class="panel glass hidden" id="customer-panel">
+        <div class="section-head">
+          <h2>Мои заказы</h2>
+          <button id="refresh-orders" class="secondary">Обновить</button>
+        </div>
+        <ul id="customer-orders" class="list"></ul>
+      </section>
+
+      <section class="panel glass hidden" id="admin-panel">
+        <div class="section-head">
+          <h2>Админ-панель: финансы и документы</h2>
+          <button id="refresh-admin" class="secondary">Обновить данные</button>
+        </div>
+
+        <div id="admin-kpis" class="kpi-grid"></div>
+
+        <div class="admin-grid">
+          <form id="product-form">
+            <h3>Добавить товар</h3>
+            <input name="title" placeholder="Название" required />
+            <input name="category" placeholder="Категория" required />
+            <input name="price" type="number" step="0.01" placeholder="Цена" required />
+            <input name="stock" type="number" step="1" placeholder="Остаток" required />
+            <input name="imageUrl" placeholder="URL изображения" />
+            <textarea name="description" placeholder="Описание"></textarea>
+            <button type="submit">Сохранить товар</button>
           </form>
 
           <form id="invoice-form">
-            <h3>Add Invoice</h3>
-            <input name="clientName" placeholder="Client name" required />
-            <input name="amount" type="number" step="0.01" placeholder="Amount" required />
+            <h3>Создать документ (Invoice)</h3>
+            <input name="userId" placeholder="ID пользователя" required />
+            <input name="clientName" placeholder="Имя клиента" required />
+            <input name="amount" type="number" step="0.01" placeholder="Сумма" required />
             <select name="status">
-              <option value="pending">Pending</option>
-              <option value="paid">Paid</option>
+              <option value="pending">pending</option>
+              <option value="paid">paid</option>
             </select>
-            <button>Add Invoice</button>
+            <button type="submit">Создать invoice</button>
           </form>
 
           <form id="expense-form">
-            <h3>Add Expense</h3>
-            <input name="category" placeholder="Category" required />
-            <input name="amount" type="number" step="0.01" placeholder="Amount" required />
-            <button>Add Expense</button>
+            <h3>Добавить расход</h3>
+            <input name="userId" placeholder="ID пользователя" required />
+            <input name="category" placeholder="Категория" required />
+            <input name="amount" type="number" step="0.01" placeholder="Сумма" required />
+            <button type="submit">Добавить расход</button>
           </form>
         </div>
 
-        <div class="grid-two">
+        <div class="admin-lists">
           <section>
-            <h3>Clients</h3>
-            <ul id="client-list"></ul>
+            <h3>Товары</h3>
+            <ul id="admin-products" class="list"></ul>
+          </section>
+          <section>
+            <h3>Заказы</h3>
+            <ul id="admin-orders" class="list"></ul>
           </section>
           <section>
             <h3>Invoices</h3>
-            <ul id="invoice-list"></ul>
+            <ul id="admin-invoices" class="list"></ul>
+          </section>
+          <section>
+            <h3>Expenses</h3>
+            <ul id="admin-expenses" class="list"></ul>
           </section>
         </div>
-
-        <section>
-          <h3>Expenses</h3>
-          <ul id="expense-list"></ul>
-        </section>
       </section>
 
-      <p id="message"></p>
+      <p id="message" class="message"></p>
     </main>
 
     <script src="/app.js"></script>

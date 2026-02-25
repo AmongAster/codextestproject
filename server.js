@@ -72,18 +72,26 @@ function verifyToken(token) {
   }
 }
 
-function getAuthUser(req) {
-  const auth = req.headers.authorization || '';
-  if (!auth.startsWith('Bearer ')) return null;
-  const decoded = verifyToken(auth.slice(7));
-  if (!decoded?.userId) return null;
-  const rows = db.query(`SELECT id, name, email FROM users WHERE id = ${db.escapeSql(decoded.userId)} LIMIT 1`);
-  return rows[0] || null;
+function toCamelRow(row) {
+  const mapped = { ...row };
+  Object.keys(mapped).forEach((key) => {
+    const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    if (camelKey !== key) {
+      mapped[camelKey] = mapped[key];
+      delete mapped[key];
+    }
+  });
+  if (mapped.amount !== undefined) mapped.amount = Number(mapped.amount);
+  if (mapped.price !== undefined) mapped.price = Number(mapped.price);
+  if (mapped.totalAmount !== undefined) mapped.totalAmount = Number(mapped.totalAmount);
+  if (mapped.stock !== undefined) mapped.stock = Number(mapped.stock);
+  if (mapped.isActive !== undefined) mapped.isActive = Number(mapped.isActive) === 1;
+  if (mapped.quantity !== undefined) mapped.quantity = Number(mapped.quantity);
+  return mapped;
 }
 
 function requireHttps(req, res) {
-  const production = process.env.NODE_ENV === 'production';
-  if (production && req.headers['x-forwarded-proto'] !== 'https') {
+  if (process.env.NODE_ENV === 'production' && req.headers['x-forwarded-proto'] !== 'https') {
     json(res, 400, { error: 'HTTPS is required in production.' });
     return false;
   }
@@ -115,10 +123,145 @@ function sendStatic(req, res, pathname) {
   });
 }
 
-function normalizeRow(key, row) {
-  if (!row) return row;
-  if (key === 'invoices' || key === 'expenses') return { ...row, amount: Number(row.amount || 0) };
-  return row;
+function getAuthUser(req) {
+  const auth = req.headers.authorization || '';
+  if (!auth.startsWith('Bearer ')) return null;
+  const decoded = verifyToken(auth.slice(7));
+  if (!decoded?.userId) return null;
+  const rows = db.query(`SELECT id, name, email, role FROM users WHERE id = ${db.escapeSql(decoded.userId)} LIMIT 1`);
+  return rows[0] ? toCamelRow(rows[0]) : null;
+}
+
+function requireAuth(req, res) {
+  const user = getAuthUser(req);
+  if (!user) {
+    json(res, 401, { error: 'Unauthorized' });
+    return null;
+  }
+  return user;
+}
+
+function requireAdmin(user, res) {
+  if (!user || user.role !== 'admin') {
+    json(res, 403, { error: 'Admin access required' });
+    return false;
+  }
+  return true;
+}
+
+function seedDemoData() {
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@ledgerpro.shop';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123!';
+
+  const existingAdmin = db.query(`SELECT id FROM users WHERE role='admin' LIMIT 1`);
+  if (!existingAdmin.length) {
+    db.execute(`
+      INSERT INTO users (id, name, email, password_hash, role)
+      VALUES (
+        ${db.escapeSql(createId('usr'))},
+        ${db.escapeSql('Administrator')},
+        ${db.escapeSql(adminEmail)},
+        ${db.escapeSql(hashPassword(adminPassword))},
+        'admin'
+      )
+    `);
+  }
+
+  const productsCount = db.query('SELECT COUNT(*) AS total FROM products')[0];
+  if (Number(productsCount?.total || 0) === 0) {
+    const demoProducts = [
+      ['prod_1', 'Business Consulting Pack', 'Monthly financial planning and consulting bundle.', 'Services', 199.0, 25, 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40'],
+      ['prod_2', 'Invoice Automation Suite', 'Digital invoicing templates and automation tools.', 'Software', 89.0, 100, 'https://images.unsplash.com/photo-1554224155-6726b3ff858f'],
+      ['prod_3', 'Tax Preparation Service', 'Quarterly tax prep and declaration support.', 'Services', 149.0, 40, 'https://images.unsplash.com/photo-1586489948274-aef9be3d8ff2']
+    ];
+
+    demoProducts.forEach((p) => {
+      db.execute(`
+        INSERT INTO products (id, title, description, category, price, stock, image_url, is_active)
+        VALUES (${p.map(db.escapeSql).join(', ')}, 1)
+      `);
+    });
+  }
+}
+
+async function handleAuth(req, res, pathname) {
+  if (req.method === 'POST' && pathname === '/api/auth/register') {
+    const body = await parseBody(req).catch((error) => json(res, 400, { error: error.message }));
+    if (!body || res.writableEnded) return true;
+
+    const { email, password, name } = body;
+    if (!email || !password || !name) {
+      json(res, 400, { error: 'name, email, password required' });
+      return true;
+    }
+
+    const exists = db.query(`SELECT id FROM users WHERE email = ${db.escapeSql(email)} LIMIT 1`);
+    if (exists.length) {
+      json(res, 409, { error: 'Email already registered' });
+      return true;
+    }
+
+    const user = { id: createId('usr'), email, name, role: 'customer' };
+    db.execute(`
+      INSERT INTO users (id, name, email, password_hash, role)
+      VALUES (
+        ${db.escapeSql(user.id)},
+        ${db.escapeSql(user.name)},
+        ${db.escapeSql(user.email)},
+        ${db.escapeSql(hashPassword(password))},
+        'customer'
+      )
+    `);
+
+    const token = createToken({ userId: user.id, email: user.email, role: user.role });
+    json(res, 201, { token, user });
+    return true;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/auth/login') {
+    const body = await parseBody(req).catch((error) => json(res, 400, { error: error.message }));
+    if (!body || res.writableEnded) return true;
+
+    const users = db.query(`
+      SELECT id, name, email, role, password_hash
+      FROM users
+      WHERE email = ${db.escapeSql(body.email)}
+      LIMIT 1
+    `);
+    const user = users[0];
+
+    if (!user || !verifyPassword(body.password || '', user.password_hash)) {
+      json(res, 401, { error: 'Invalid credentials' });
+      return true;
+    }
+
+    const safeUser = toCamelRow({ id: user.id, name: user.name, email: user.email, role: user.role });
+    const token = createToken({ userId: safeUser.id, email: safeUser.email, role: safeUser.role });
+    json(res, 200, { token, user: safeUser });
+    return true;
+  }
+
+  return false;
+}
+
+function fetchSummaryForAdmin() {
+  const incomeRow = db.query('SELECT COALESCE(SUM(total_amount), 0) AS totalRevenue FROM orders WHERE status <> "cancelled"')[0];
+  const expenseRow = db.query('SELECT COALESCE(SUM(amount), 0) AS totalExpenses FROM expenses')[0];
+  const ordersCountRow = db.query('SELECT COUNT(*) AS ordersCount FROM orders')[0];
+  const invoicesCountRow = db.query('SELECT COUNT(*) AS invoicesCount FROM invoices')[0];
+  const clientsCountRow = db.query('SELECT COUNT(*) AS clientsCount FROM clients')[0];
+
+  const totalRevenue = Number(incomeRow?.totalRevenue || 0);
+  const totalExpenses = Number(expenseRow?.totalExpenses || 0);
+
+  return {
+    totalRevenue,
+    totalExpenses,
+    netProfit: totalRevenue - totalExpenses,
+    ordersCount: Number(ordersCountRow?.ordersCount || 0),
+    invoicesCount: Number(invoicesCountRow?.invoicesCount || 0),
+    clientsCount: Number(clientsCountRow?.clientsCount || 0)
+  };
 }
 
 async function handler(req, res) {
@@ -126,197 +269,167 @@ async function handler(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
 
-  if (pathname.startsWith('/api/')) {
-    if (req.method === 'POST' && pathname === '/api/auth/register') {
-      const body = await parseBody(req).catch((error) => json(res, 400, { error: error.message }));
-      if (!body || res.writableEnded) return;
-      const { email, password, name } = body;
-      if (!email || !password || !name) return json(res, 400, { error: 'name, email, password required' });
+  if (!pathname.startsWith('/api/')) return sendStatic(req, res, pathname);
 
-      const exists = db.query(`SELECT id FROM users WHERE email = ${db.escapeSql(email)} LIMIT 1`);
-      if (exists.length) return json(res, 409, { error: 'Email already registered' });
+  const authHandled = await handleAuth(req, res, pathname);
+  if (authHandled) return;
 
-      const user = { id: createId('usr'), name, email, passwordHash: hashPassword(password) };
-      db.execute(`
-        INSERT INTO users (id, name, email, password_hash)
-        VALUES (${db.escapeSql(user.id)}, ${db.escapeSql(user.name)}, ${db.escapeSql(user.email)}, ${db.escapeSql(user.passwordHash)})
-      `);
-      const token = createToken({ userId: user.id, email: user.email });
-      return json(res, 201, { token, user: { id: user.id, name: user.name, email: user.email } });
+  if (req.method === 'GET' && pathname === '/api/products') {
+    const products = db.query('SELECT * FROM products WHERE is_active = 1 ORDER BY created_at DESC').map(toCamelRow);
+    return json(res, 200, products);
+  }
+
+  const user = requireAuth(req, res);
+  if (!user) return;
+
+  if (req.method === 'GET' && pathname === '/api/me') return json(res, 200, user);
+
+  if (req.method === 'GET' && pathname === '/api/orders/my') {
+    const orders = db.query(`
+      SELECT o.*, p.title AS product_title, p.image_url AS product_image
+      FROM orders o
+      JOIN products p ON p.id = o.product_id
+      WHERE o.user_id = ${db.escapeSql(user.id)}
+      ORDER BY o.created_at DESC
+    `).map(toCamelRow);
+    return json(res, 200, orders);
+  }
+
+  if (req.method === 'POST' && pathname === '/api/orders') {
+    const body = await parseBody(req).catch((error) => json(res, 400, { error: error.message }));
+    if (!body || res.writableEnded) return;
+
+    const quantity = Number(body.quantity || 1);
+    if (!body.productId || quantity <= 0) return json(res, 400, { error: 'productId and positive quantity are required' });
+
+    const product = db.query(`SELECT * FROM products WHERE id = ${db.escapeSql(body.productId)} AND is_active = 1 LIMIT 1`)[0];
+    if (!product) return json(res, 404, { error: 'Product not found' });
+    if (Number(product.stock) < quantity) return json(res, 400, { error: 'Not enough stock' });
+
+    const totalAmount = Number(product.price) * quantity;
+    const orderId = createId('ord');
+
+    db.execute(`
+      INSERT INTO orders (id, user_id, product_id, quantity, total_amount, status, shipping_address)
+      VALUES (
+        ${db.escapeSql(orderId)},
+        ${db.escapeSql(user.id)},
+        ${db.escapeSql(product.id)},
+        ${db.escapeSql(quantity)},
+        ${db.escapeSql(totalAmount)},
+        'new',
+        ${db.escapeSql(body.shippingAddress || '')}
+      )
+    `);
+
+    db.execute(`UPDATE products SET stock = stock - ${db.escapeSql(quantity)} WHERE id = ${db.escapeSql(product.id)}`);
+
+    const created = db.query(`SELECT * FROM orders WHERE id = ${db.escapeSql(orderId)} LIMIT 1`)[0];
+    return json(res, 201, toCamelRow(created));
+  }
+
+  if (pathname.startsWith('/api/admin/')) {
+    if (!requireAdmin(user, res)) return;
+
+    if (req.method === 'GET' && pathname === '/api/admin/summary') {
+      return json(res, 200, fetchSummaryForAdmin());
     }
 
-    if (req.method === 'POST' && pathname === '/api/auth/login') {
-      const body = await parseBody(req).catch((error) => json(res, 400, { error: error.message }));
-      if (!body || res.writableEnded) return;
-      const { email, password } = body;
-      const users = db.query(`
-        SELECT id, name, email, password_hash
-        FROM users
-        WHERE email = ${db.escapeSql(email)}
-        LIMIT 1
-      `);
-      const user = users[0];
-      if (!user || !verifyPassword(password || '', user.password_hash)) return json(res, 401, { error: 'Invalid credentials' });
-      const token = createToken({ userId: user.id, email: user.email });
-      return json(res, 200, { token, user: { id: user.id, name: user.name, email: user.email } });
-    }
-
-    const user = getAuthUser(req);
-    if (!user) return json(res, 401, { error: 'Unauthorized' });
-
-    if (req.method === 'GET' && pathname === '/api/me') return json(res, 200, user);
-
-    const collections = {
-      '/api/clients': {
-        table: 'clients',
-        fields: ['name', 'email'],
+    const resources = {
+      products: {
+        fields: ['title', 'description', 'category', 'price', 'stock', 'image_url', 'is_active'],
+        idPrefix: 'prd'
+      },
+      clients: {
+        fields: ['user_id', 'name', 'email'],
         idPrefix: 'cli'
       },
-      '/api/invoices': {
-        table: 'invoices',
-        fields: ['client_name', 'amount', 'status'],
+      invoices: {
+        fields: ['user_id', 'client_name', 'amount', 'status'],
         idPrefix: 'inv'
       },
-      '/api/expenses': {
-        table: 'expenses',
-        fields: ['category', 'amount'],
+      expenses: {
+        fields: ['user_id', 'category', 'amount'],
         idPrefix: 'exp'
+      },
+      orders: {
+        fields: ['user_id', 'product_id', 'quantity', 'total_amount', 'status', 'shipping_address'],
+        idPrefix: 'ord'
       }
     };
 
-    for (const [route, cfg] of Object.entries(collections)) {
-      if (pathname === route && req.method === 'GET') {
-        const rows = db.query(`SELECT * FROM ${cfg.table} WHERE user_id = ${db.escapeSql(user.id)} ORDER BY created_at DESC`)
-          .map((row) => normalizeRow(cfg.table, row))
-          .map((row) => {
-            const mapped = { ...row };
-            if (mapped.user_id) {
-              mapped.userId = mapped.user_id;
-              delete mapped.user_id;
-            }
-            if (mapped.client_name) {
-              mapped.clientName = mapped.client_name;
-              delete mapped.client_name;
-            }
-            if (mapped.created_at) {
-              mapped.createdAt = mapped.created_at;
-              delete mapped.created_at;
-            }
-            return mapped;
-          });
-        return json(res, 200, rows);
-      }
+    const parts = pathname.split('/').filter(Boolean);
+    const resource = parts[2];
+    const id = parts[3];
+    const cfg = resources[resource];
+    if (!cfg) return json(res, 404, { error: 'Admin endpoint not found' });
 
-      if (pathname === route && req.method === 'POST') {
-        const body = await parseBody(req).catch((error) => json(res, 400, { error: error.message }));
-        if (!body || res.writableEnded) return;
-
-        const id = createId(cfg.idPrefix);
-        const payload = {
-          clients: { name: body.name, email: body.email },
-          invoices: { client_name: body.clientName, amount: Number(body.amount || 0), status: body.status || 'pending' },
-          expenses: { category: body.category, amount: Number(body.amount || 0) }
-        }[cfg.table];
-
-        const columns = ['id', 'user_id', ...cfg.fields];
-        const values = [id, user.id, ...cfg.fields.map((field) => payload[field])];
-        db.execute(`INSERT INTO ${cfg.table} (${columns.join(', ')}) VALUES (${values.map(db.escapeSql).join(', ')})`);
-
-        const created = db.query(`SELECT * FROM ${cfg.table} WHERE id = ${db.escapeSql(id)} LIMIT 1`)[0];
-        const mapped = { ...created };
-        if (mapped.user_id) { mapped.userId = mapped.user_id; delete mapped.user_id; }
-        if (mapped.client_name) { mapped.clientName = mapped.client_name; delete mapped.client_name; }
-        if (mapped.created_at) { mapped.createdAt = mapped.created_at; delete mapped.created_at; }
-        if (mapped.amount !== undefined) mapped.amount = Number(mapped.amount);
-        return json(res, 201, mapped);
-      }
-
-      if (pathname.startsWith(`${route}/`)) {
-        const id = pathname.split('/').pop();
-        const existing = db.query(`SELECT * FROM ${cfg.table} WHERE id = ${db.escapeSql(id)} AND user_id = ${db.escapeSql(user.id)} LIMIT 1`)[0];
-        if (!existing) return json(res, 404, { error: `${cfg.table.slice(0, -1)} not found` });
-
-        if (req.method === 'GET') {
-          const mapped = { ...existing };
-          if (mapped.user_id) { mapped.userId = mapped.user_id; delete mapped.user_id; }
-          if (mapped.client_name) { mapped.clientName = mapped.client_name; delete mapped.client_name; }
-          if (mapped.created_at) { mapped.createdAt = mapped.created_at; delete mapped.created_at; }
-          if (mapped.amount !== undefined) mapped.amount = Number(mapped.amount);
-          return json(res, 200, mapped);
-        }
-
-        if (req.method === 'PUT') {
-          const body = await parseBody(req).catch((error) => json(res, 400, { error: error.message }));
-          if (!body || res.writableEnded) return;
-
-          const updates = {
-            clients: { name: body.name ?? existing.name, email: body.email ?? existing.email },
-            invoices: {
-              client_name: body.clientName ?? existing.client_name,
-              amount: body.amount !== undefined ? Number(body.amount) : Number(existing.amount),
-              status: body.status ?? existing.status
-            },
-            expenses: {
-              category: body.category ?? existing.category,
-              amount: body.amount !== undefined ? Number(body.amount) : Number(existing.amount)
-            }
-          }[cfg.table];
-
-          const setExpr = Object.entries(updates).map(([key, val]) => `${key} = ${db.escapeSql(val)}`).join(', ');
-          db.execute(`UPDATE ${cfg.table} SET ${setExpr} WHERE id = ${db.escapeSql(id)} AND user_id = ${db.escapeSql(user.id)}`);
-          const updated = db.query(`SELECT * FROM ${cfg.table} WHERE id = ${db.escapeSql(id)} LIMIT 1`)[0];
-          const mapped = { ...updated };
-          if (mapped.user_id) { mapped.userId = mapped.user_id; delete mapped.user_id; }
-          if (mapped.client_name) { mapped.clientName = mapped.client_name; delete mapped.client_name; }
-          if (mapped.created_at) { mapped.createdAt = mapped.created_at; delete mapped.created_at; }
-          if (mapped.amount !== undefined) mapped.amount = Number(mapped.amount);
-          return json(res, 200, mapped);
-        }
-
-        if (req.method === 'DELETE') {
-          db.execute(`DELETE FROM ${cfg.table} WHERE id = ${db.escapeSql(id)} AND user_id = ${db.escapeSql(user.id)}`);
-          const mapped = { ...existing };
-          if (mapped.user_id) { mapped.userId = mapped.user_id; delete mapped.user_id; }
-          if (mapped.client_name) { mapped.clientName = mapped.client_name; delete mapped.client_name; }
-          if (mapped.created_at) { mapped.createdAt = mapped.created_at; delete mapped.created_at; }
-          if (mapped.amount !== undefined) mapped.amount = Number(mapped.amount);
-          return json(res, 200, mapped);
-        }
-      }
+    if (req.method === 'GET' && !id) {
+      const rows = db.query(`SELECT * FROM ${resource} ORDER BY created_at DESC`).map(toCamelRow);
+      return json(res, 200, rows);
     }
 
-    if (req.method === 'GET' && pathname === '/api/reports/summary') {
-      const incomeRow = db.query(`SELECT COALESCE(SUM(amount), 0) AS totalIncome FROM invoices WHERE user_id = ${db.escapeSql(user.id)}`)[0];
-      const expenseRow = db.query(`SELECT COALESCE(SUM(amount), 0) AS totalExpenses FROM expenses WHERE user_id = ${db.escapeSql(user.id)}`)[0];
-      const outstandingRow = db.query(`
-        SELECT COALESCE(SUM(amount), 0) AS outstandingInvoices
-        FROM invoices
-        WHERE user_id = ${db.escapeSql(user.id)} AND status <> 'paid'
-      `)[0];
-      const invoiceCountRow = db.query(`SELECT COUNT(*) AS invoiceCount FROM invoices WHERE user_id = ${db.escapeSql(user.id)}`)[0];
-      const expenseCountRow = db.query(`SELECT COUNT(*) AS expenseCount FROM expenses WHERE user_id = ${db.escapeSql(user.id)}`)[0];
+    if (req.method === 'POST' && !id) {
+      const body = await parseBody(req).catch((error) => json(res, 400, { error: error.message }));
+      if (!body || res.writableEnded) return;
 
-      const totalIncome = Number(incomeRow?.totalIncome || 0);
-      const totalExpenses = Number(expenseRow?.totalExpenses || 0);
-      const outstandingInvoices = Number(outstandingRow?.outstandingInvoices || 0);
+      const payload = {
+        ...body,
+        user_id: body.userId,
+        client_name: body.clientName,
+        product_id: body.productId,
+        total_amount: body.totalAmount,
+        shipping_address: body.shippingAddress,
+        image_url: body.imageUrl,
+        is_active: body.isActive === false ? 0 : 1
+      };
 
-      return json(res, 200, {
-        totalIncome,
-        totalExpenses,
-        netProfit: totalIncome - totalExpenses,
-        outstandingInvoices,
-        invoiceCount: Number(invoiceCountRow?.invoiceCount || 0),
-        expenseCount: Number(expenseCountRow?.expenseCount || 0)
-      });
+      const newId = createId(cfg.idPrefix);
+      const columns = ['id', ...cfg.fields];
+      const values = [newId, ...cfg.fields.map((field) => payload[field])];
+      db.execute(`INSERT INTO ${resource} (${columns.join(', ')}) VALUES (${values.map(db.escapeSql).join(', ')})`);
+      const created = db.query(`SELECT * FROM ${resource} WHERE id = ${db.escapeSql(newId)} LIMIT 1`)[0];
+      return json(res, 201, toCamelRow(created));
     }
 
-    return json(res, 404, { error: 'API endpoint not found' });
+    if (!id) return json(res, 400, { error: 'Resource id required' });
+
+    const existing = db.query(`SELECT * FROM ${resource} WHERE id = ${db.escapeSql(id)} LIMIT 1`)[0];
+    if (!existing) return json(res, 404, { error: 'Record not found' });
+
+    if (req.method === 'GET') return json(res, 200, toCamelRow(existing));
+
+    if (req.method === 'PUT') {
+      const body = await parseBody(req).catch((error) => json(res, 400, { error: error.message }));
+      if (!body || res.writableEnded) return;
+      const updates = { ...existing, ...body };
+      updates.user_id = body.userId ?? updates.user_id;
+      updates.client_name = body.clientName ?? updates.client_name;
+      updates.product_id = body.productId ?? updates.product_id;
+      updates.total_amount = body.totalAmount ?? updates.total_amount;
+      updates.shipping_address = body.shippingAddress ?? updates.shipping_address;
+      updates.image_url = body.imageUrl ?? updates.image_url;
+      if (body.isActive !== undefined) updates.is_active = body.isActive ? 1 : 0;
+
+      const setExpr = cfg.fields.map((field) => `${field} = ${db.escapeSql(updates[field])}`).join(', ');
+      db.execute(`UPDATE ${resource} SET ${setExpr} WHERE id = ${db.escapeSql(id)}`);
+      const updated = db.query(`SELECT * FROM ${resource} WHERE id = ${db.escapeSql(id)} LIMIT 1`)[0];
+      return json(res, 200, toCamelRow(updated));
+    }
+
+    if (req.method === 'DELETE') {
+      db.execute(`DELETE FROM ${resource} WHERE id = ${db.escapeSql(id)}`);
+      return json(res, 200, toCamelRow(existing));
+    }
+
+    return json(res, 405, { error: 'Method not allowed' });
   }
 
-  return sendStatic(req, res, pathname);
+  return json(res, 404, { error: 'API endpoint not found' });
 }
 
 db.initDatabase();
+seedDemoData();
 
 const server = http.createServer((req, res) => {
   handler(req, res).catch((error) => {
@@ -325,5 +438,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Accounting app running on http://localhost:${PORT}`);
+  console.log(`Accounting shop app running on http://localhost:${PORT}`);
 });
