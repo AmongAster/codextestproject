@@ -170,9 +170,9 @@ function seedDemoData() {
   const productsCount = db.query('SELECT COUNT(*) AS total FROM products')[0];
   if (Number(productsCount?.total || 0) === 0) {
     const demoProducts = [
-      ['prod_1', 'Business Consulting Pack', 'Monthly financial planning and consulting bundle.', 'Services', 199.0, 25, 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40'],
-      ['prod_2', 'Invoice Automation Suite', 'Digital invoicing templates and automation tools.', 'Software', 89.0, 100, 'https://images.unsplash.com/photo-1554224155-6726b3ff858f'],
-      ['prod_3', 'Tax Preparation Service', 'Quarterly tax prep and declaration support.', 'Services', 149.0, 40, 'https://images.unsplash.com/photo-1586489948274-aef9be3d8ff2']
+      ['prod_1', 'Wireless Business Headset', 'Comfort headset for video calls and customer support.', 'Electronics', 129.0, 30, 'https://images.unsplash.com/photo-1585298723682-7115561c51b7'],
+      ['prod_2', 'Portable Label Printer', 'Compact printer for invoices and warehouse labels.', 'Office', 89.0, 50, 'https://images.unsplash.com/photo-1588508065123-287b28e013da'],
+      ['prod_3', 'Financial Planner Notebook', 'Premium planner for budgeting and finance notes.', 'Stationery', 24.0, 120, 'https://images.unsplash.com/photo-1517842645767-c639042777db']
     ];
 
     demoProducts.forEach((p) => {
@@ -286,7 +286,7 @@ async function handler(req, res) {
 
   if (req.method === 'GET' && pathname === '/api/orders/my') {
     const orders = db.query(`
-      SELECT o.*, p.title AS product_title, p.image_url AS product_image
+      SELECT o.*, p.title AS product_title
       FROM orders o
       JOIN products p ON p.id = o.product_id
       WHERE o.user_id = ${db.escapeSql(user.id)}
@@ -295,37 +295,42 @@ async function handler(req, res) {
     return json(res, 200, orders);
   }
 
-  if (req.method === 'POST' && pathname === '/api/orders') {
+  if (req.method === 'POST' && pathname === '/api/orders/checkout') {
     const body = await parseBody(req).catch((error) => json(res, 400, { error: error.message }));
     if (!body || res.writableEnded) return;
 
-    const quantity = Number(body.quantity || 1);
-    if (!body.productId || quantity <= 0) return json(res, 400, { error: 'productId and positive quantity are required' });
+    const items = Array.isArray(body.items) ? body.items : [];
+    if (!items.length) return json(res, 400, { error: 'Cart is empty' });
 
-    const product = db.query(`SELECT * FROM products WHERE id = ${db.escapeSql(body.productId)} AND is_active = 1 LIMIT 1`)[0];
-    if (!product) return json(res, 404, { error: 'Product not found' });
-    if (Number(product.stock) < quantity) return json(res, 400, { error: 'Not enough stock' });
+    let ordersCreated = 0;
+    for (const item of items) {
+      const qty = Number(item.quantity || 0);
+      if (!item.id || qty <= 0) continue;
 
-    const totalAmount = Number(product.price) * quantity;
-    const orderId = createId('ord');
+      const product = db.query(`SELECT * FROM products WHERE id = ${db.escapeSql(item.id)} AND is_active = 1 LIMIT 1`)[0];
+      if (!product) continue;
+      if (Number(product.stock) < qty) continue;
 
-    db.execute(`
-      INSERT INTO orders (id, user_id, product_id, quantity, total_amount, status, shipping_address)
-      VALUES (
-        ${db.escapeSql(orderId)},
-        ${db.escapeSql(user.id)},
-        ${db.escapeSql(product.id)},
-        ${db.escapeSql(quantity)},
-        ${db.escapeSql(totalAmount)},
-        'new',
-        ${db.escapeSql(body.shippingAddress || '')}
-      )
-    `);
+      const totalAmount = Number(product.price) * qty;
+      const orderId = createId('ord');
 
-    db.execute(`UPDATE products SET stock = stock - ${db.escapeSql(quantity)} WHERE id = ${db.escapeSql(product.id)}`);
+      db.execute(`
+        INSERT INTO orders (id, user_id, product_id, quantity, total_amount, status, shipping_address)
+        VALUES (
+          ${db.escapeSql(orderId)},
+          ${db.escapeSql(user.id)},
+          ${db.escapeSql(product.id)},
+          ${db.escapeSql(qty)},
+          ${db.escapeSql(totalAmount)},
+          'awaiting_payment',
+          ${db.escapeSql(body.shippingAddress || '')}
+        )
+      `);
+      db.execute(`UPDATE products SET stock = stock - ${db.escapeSql(qty)} WHERE id = ${db.escapeSql(product.id)}`);
+      ordersCreated += 1;
+    }
 
-    const created = db.query(`SELECT * FROM orders WHERE id = ${db.escapeSql(orderId)} LIMIT 1`)[0];
-    return json(res, 201, toCamelRow(created));
+    return json(res, 201, { ordersCreated, status: 'awaiting_payment' });
   }
 
   if (pathname.startsWith('/api/admin/')) {
@@ -336,26 +341,11 @@ async function handler(req, res) {
     }
 
     const resources = {
-      products: {
-        fields: ['title', 'description', 'category', 'price', 'stock', 'image_url', 'is_active'],
-        idPrefix: 'prd'
-      },
-      clients: {
-        fields: ['user_id', 'name', 'email'],
-        idPrefix: 'cli'
-      },
-      invoices: {
-        fields: ['user_id', 'client_name', 'amount', 'status'],
-        idPrefix: 'inv'
-      },
-      expenses: {
-        fields: ['user_id', 'category', 'amount'],
-        idPrefix: 'exp'
-      },
-      orders: {
-        fields: ['user_id', 'product_id', 'quantity', 'total_amount', 'status', 'shipping_address'],
-        idPrefix: 'ord'
-      }
+      products: { fields: ['title', 'description', 'category', 'price', 'stock', 'image_url', 'is_active'], idPrefix: 'prd' },
+      clients: { fields: ['user_id', 'name', 'email'], idPrefix: 'cli' },
+      invoices: { fields: ['user_id', 'client_name', 'amount', 'status'], idPrefix: 'inv' },
+      expenses: { fields: ['user_id', 'category', 'amount'], idPrefix: 'exp' },
+      orders: { fields: ['user_id', 'product_id', 'quantity', 'total_amount', 'status', 'shipping_address'], idPrefix: 'ord' }
     };
 
     const parts = pathname.split('/').filter(Boolean);
@@ -402,6 +392,7 @@ async function handler(req, res) {
     if (req.method === 'PUT') {
       const body = await parseBody(req).catch((error) => json(res, 400, { error: error.message }));
       if (!body || res.writableEnded) return;
+
       const updates = { ...existing, ...body };
       updates.user_id = body.userId ?? updates.user_id;
       updates.client_name = body.clientName ?? updates.client_name;

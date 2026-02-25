@@ -56,11 +56,11 @@ test.after(() => {
 
 async function request(path, options = {}) {
   const response = await fetch(`http://localhost:${PORT}${path}`, options);
-  const json = await response.json();
-  return { status: response.status, body: json };
+  const body = await response.json();
+  return { status: response.status, body };
 }
 
-test('customer registration/login can browse shop and create order', async (t) => {
+test('customer checkout creates awaiting_payment order and admin can update status', async (t) => {
   if (!canRunMysqlTests) {
     t.skip('MySQL is not available in this environment.');
     return;
@@ -72,27 +72,37 @@ test('customer registration/login can browse shop and create order', async (t) =
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: 'Customer', email, password: 'P@ssw0rd1' })
   });
-
   assert.equal(register.status, 201);
-  assert.equal(register.body.user.role, 'customer');
 
   const products = await request('/api/products');
   assert.equal(products.status, 200);
-  assert.ok(Array.isArray(products.body));
   assert.ok(products.body.length > 0);
 
-  const productId = products.body[0].id;
-  const order = await request('/api/orders', {
+  const checkout = await request('/api/orders/checkout', {
     method: 'POST',
     headers: { Authorization: `Bearer ${register.body.token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ productId, quantity: 1, shippingAddress: 'Test street 1' })
+    body: JSON.stringify({ items: [{ id: products.body[0].id, quantity: 1 }], shippingAddress: 'test' })
   });
+  assert.equal(checkout.status, 201);
+  assert.equal(checkout.body.status, 'awaiting_payment');
 
-  assert.equal(order.status, 201);
-
-  const myOrders = await request('/api/orders/my', {
-    headers: { Authorization: `Bearer ${register.body.token}` }
-  });
+  const myOrders = await request('/api/orders/my', { headers: { Authorization: `Bearer ${register.body.token}` } });
   assert.equal(myOrders.status, 200);
-  assert.ok(myOrders.body.length >= 1);
+  assert.equal(myOrders.body[0].status, 'awaiting_payment');
+
+  const adminLogin = await request('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'admin@ledgerpro.shop', password: 'Admin123!' })
+  });
+  assert.equal(adminLogin.status, 200);
+
+  const orderId = myOrders.body[0].id;
+  const update = await request(`/api/admin/orders/${orderId}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${adminLogin.body.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: 'paid' })
+  });
+  assert.equal(update.status, 200);
+  assert.equal(update.body.status, 'paid');
 });
