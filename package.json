@@ -1,0 +1,10 @@
+{
+  "name": "casebattle-clone",
+  "version": "1.0.0",
+  "description": "Case battle style demo with admin and payment integration",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  }
+}

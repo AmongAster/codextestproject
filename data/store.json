@@ -1,0 +1,26 @@
+{
+  "cases": [
+    {
+      "id": "starter-case",
+      "name": "Starter Case",
+      "price": 4.99,
+      "items": [
+        {"id": "ak-redline", "name": "AK-47 | Redline", "rarity": "rare", "value": 7.2, "weight": 25, "image": "https://images.steamusercontent.com/placeholder/ak-redline"},
+        {"id": "awp-asiimov", "name": "AWP | Asiimov", "rarity": "epic", "value": 28.1, "weight": 8, "image": "https://images.steamusercontent.com/placeholder/awp-asiimov"},
+        {"id": "glock-water", "name": "Glock-18 | Water Elemental", "rarity": "uncommon", "value": 5.4, "weight": 35, "image": "https://images.steamusercontent.com/placeholder/glock-water"},
+        {"id": "knife-fade", "name": "Karambit | Fade", "rarity": "legendary", "value": 1200, "weight": 1, "image": "https://images.steamusercontent.com/placeholder/knife-fade"}
+      ]
+    },
+    {
+      "id": "pro-case",
+      "name": "Pro Case",
+      "price": 14.99,
+      "items": [
+        {"id": "m4a4-howl", "name": "M4A4 | Howl", "rarity": "legendary", "value": 3900, "weight": 1, "image": "https://images.steamusercontent.com/placeholder/m4a4-howl"},
+        {"id": "deagle-blaze", "name": "Desert Eagle | Blaze", "rarity": "epic", "value": 560, "weight": 5, "image": "https://images.steamusercontent.com/placeholder/deagle-blaze"},
+        {"id": "usp-neo", "name": "USP-S | Neo-Noir", "rarity": "rare", "value": 38, "weight": 16, "image": "https://images.steamusercontent.com/placeholder/usp-neo"},
+        {"id": "p250-sand", "name": "P250 | Sand Dune", "rarity": "common", "value": 1.2, "weight": 40, "image": "https://images.steamusercontent.com/placeholder/p250-sand"}
+      ]
+    }
+  ]
+}
