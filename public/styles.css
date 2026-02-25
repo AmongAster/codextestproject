@@ -1,0 +1,106 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f1223;
+  --panel: #171b2f;
+  --accent: #42f5c5;
+  --text: #f2f5ff;
+  --muted: #9ba5cc;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: Inter, system-ui, Arial, sans-serif;
+  background: radial-gradient(circle at top, #1f2750, var(--bg));
+  color: var(--text);
+}
+header {
+  text-align: center;
+  padding: 1.5rem 1rem;
+}
+main {
+  max-width: 1100px;
+  margin: 0 auto 2rem;
+  display: grid;
+  gap: 1rem;
+  padding: 0 1rem;
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid #2b3150;
+  border-radius: 12px;
+  padding: 1rem;
+}
+.case-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.8rem;
+}
+.case-card {
+  border: 1px solid #37406d;
+  border-radius: 10px;
+  padding: 0.8rem;
+  cursor: pointer;
+}
+.case-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px #42f5c53a;
+}
+.roller-wrap {
+  margin-top: 0.8rem;
+  overflow: hidden;
+  border: 1px solid #37406d;
+  border-radius: 10px;
+  position: relative;
+  background: #11162a;
+}
+.pointer {
+  position: absolute;
+  width: 3px;
+  background: var(--accent);
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+.roller {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.6rem;
+  transform: translateX(0);
+  transition: transform 4.2s cubic-bezier(.13,.8,.15,1);
+}
+.roller-item {
+  min-width: 130px;
+  background: #212949;
+  border-radius: 8px;
+  padding: 0.6rem;
+  border: 1px solid #37406d;
+  font-size: 0.9rem;
+}
+.roller-item.common { border-color: #7f8db3; }
+.roller-item.uncommon { border-color: #47c97d; }
+.roller-item.rare { border-color: #4f91ff; }
+.roller-item.epic { border-color: #b84bff; }
+.roller-item.legendary { border-color: #fca311; }
+form { display: grid; gap: 0.6rem; }
+label { display: grid; gap: 0.3rem; color: var(--muted); }
+input, select, button {
+  background: #0d1227;
+  color: var(--text);
+  border: 1px solid #37406d;
+  border-radius: 8px;
+  padding: 0.6rem;
+}
+button { cursor: pointer; background: #1e2c5a; }
+button:hover { background: #2a3a74; }
+.admin-form { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+pre {
+  white-space: pre-wrap;
+  background: #0d1227;
+  border: 1px solid #37406d;
+  border-radius: 8px;
+  padding: 0.7rem;
+  min-height: 4rem;
+}
